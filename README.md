@@ -43,13 +43,12 @@ The **device firmware** lives in its own repository —
 
 1. In Home Assistant, open **Settings → Add-ons → Add-on store → ⋮ → Repositories**
    and add `https://github.com/kyvaith/ha-openai-realtime`.
-2. Install **OpenAI Realtime 2 Voice Agent**. It ships with no prebuilt `image:`,
-   so Home Assistant builds it locally on first install (a few minutes on a Pi).
+2. Install **OpenAI Realtime 2 Voice Agent**. Prebuilt images are published to
+   GHCR for the supported architectures.
 3. Configure the add-on and flash the companion firmware — see
    [`openai_realtime_voice_agent/DOCS.md`](openai_realtime_voice_agent/DOCS.md).
 
-(An optional GitHub Actions workflow can publish container images to ghcr.io; it
-isn't needed for a normal local-build install.)
+(GitHub Actions publishes container images to ghcr.io for this fork.)
 
 ## How it works
 
