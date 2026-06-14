@@ -2,6 +2,16 @@
 
 All notable changes to this add-on. Newest first.
 
+## 0.5.1
+
+- Fork release for Atmosfera Echo Hub testing.
+- Added safer Home Assistant tool handling so conversational checks like "can
+  you hear me?" cannot trigger smart-home actions.
+- Added an explicit `interrupt_response` configuration option for hardware with
+  reliable echo cancellation.
+- Improved phase handling around tool calls and fixed diagnostic audio
+  recording ordering.
+
 ## 0.5.0
 
 A big stable release: everything built and tested on the dev channel over the
