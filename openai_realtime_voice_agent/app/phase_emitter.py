@@ -72,6 +72,7 @@ class PhaseEmitter(FrameProcessor):
         self._idle_debounce_s = max(0.0, idle_debounce_s)
         self._idle_task = None
         self._current = None  # last phase actually sent, to dedupe redundant emits
+        self._tool_active = False
 
     async def _emit(self, value: str) -> None:
         if value == self._current:
@@ -94,6 +95,9 @@ class PhaseEmitter(FrameProcessor):
             await asyncio.sleep(self._idle_debounce_s)
         except asyncio.CancelledError:
             return
+        if self._tool_active:
+            self._idle_task = asyncio.create_task(self._emit_idle_after_debounce())
+            return
         await self._emit("idle")
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
@@ -113,5 +117,12 @@ class PhaseEmitter(FrameProcessor):
             # if the bot stays silent for the debounce window.
             self._cancel_pending_idle()
             self._idle_task = asyncio.create_task(self._emit_idle_after_debounce())
+        else:
+            frame_name = type(frame).__name__
+            if frame_name in ("FunctionCallsStartedFrame", "FunctionCallInProgressFrame"):
+                self._tool_active = True
+                self._cancel_pending_idle()
+            elif frame_name in ("FunctionCallResultFrame", "FunctionCallCancelFrame"):
+                self._tool_active = False
 
         await self.push_frame(frame, direction)

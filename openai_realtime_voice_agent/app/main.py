@@ -16,6 +16,12 @@ from app.web_search_tool import get_web_search_tool_definition, create_web_searc
 from app.audio_recording_service import AudioRecordingService
 from app.session_manager import SessionManager
 from app.websocket_handler import WebSocketHandler
+from app.tool_safety import (
+    augment_system_instructions,
+    augment_tool_description,
+    guarded_tool_handler,
+    should_guard_tool,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -488,7 +494,10 @@ class Application:
                         openai_tool = {
                             "type": "function",
                             "name": function_schema.name,
-                            "description": function_schema.description,
+                            "description": augment_tool_description(
+                                function_schema.name,
+                                function_schema.description,
+                            ),
                             "parameters": {
                                 "type": "object",
                                 "properties": function_schema.properties,
@@ -560,7 +569,7 @@ class Application:
             )
 
             session_properties = SessionProperties(
-                instructions=self.instructions,
+                instructions=augment_system_instructions(self.instructions),
                 # Cap the reply length: bounds runaway monologues + per-response
                 # output-token cost. None = unlimited (the API default "inf").
                 max_output_tokens=self.max_output_tokens,
@@ -618,7 +627,18 @@ class Application:
             # Register MCP tool handlers if available
             if self.mcp_client and mcp_tools_schema:
                 try:
-                    await self.mcp_client.register_tools_schema(mcp_tools_schema, self.openai_service)
+                    original_register_function = self.openai_service.register_function
+
+                    def register_guarded_function(name, handler):
+                        if should_guard_tool(name):
+                            handler = guarded_tool_handler(name, handler)
+                        return original_register_function(name, handler)
+
+                    self.openai_service.register_function = register_guarded_function
+                    try:
+                        await self.mcp_client.register_tools_schema(mcp_tools_schema, self.openai_service)
+                    finally:
+                        self.openai_service.register_function = original_register_function
                     logger.info(f"✅ Registered {len(mcp_tools_schema.standard_tools)} MCP tool handlers")
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to register MCP tool handlers: {e}")

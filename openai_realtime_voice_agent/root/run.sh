@@ -17,6 +17,7 @@ FOLLOW_UP_LISTEN_SECONDS=$(bashio::config 'follow_up_listen_seconds')
 FOLLOW_UP_OPEN_DELAY_MS=$(bashio::config 'follow_up_open_delay_ms')
 VAD_EAGERNESS=$(bashio::config 'vad_eagerness')
 PHASE_IDLE_DEBOUNCE_MS=$(bashio::config 'phase_idle_debounce_ms')
+INTERRUPT_RESPONSE=$(bashio::config 'interrupt_response')
 
 # --- 🌐 Web search ---
 ENABLE_WEB_SEARCH=$(bashio::config 'enable_web_search')
@@ -58,6 +59,7 @@ export FOLLOW_UP_LISTEN_SECONDS
 export FOLLOW_UP_OPEN_DELAY_MS
 export VAD_EAGERNESS
 export PHASE_IDLE_DEBOUNCE_MS
+export INTERRUPT_RESPONSE
 export ENABLE_WEB_SEARCH
 export WEB_SEARCH_MODEL
 export PLAYBACK_PREBUFFER_MS
@@ -115,7 +117,7 @@ fi
 
 # Removed options (v0.4.29) — no longer exported; main.py env defaults take
 # over: SEMANTIC_VAD_CREATE_RESPONSE=true, ENABLE_DISCONNECT_TOOL=false,
-# INTERRUPT_RESPONSE=false, DEVICE_INPUT_SAMPLE_RATE=16000.
+# DEVICE_INPUT_SAMPLE_RATE=16000.
 
 # Export HA_MCP_URL if set (empty string means use default in main.py)
 if [ -n "$HA_MCP_URL" ]; then

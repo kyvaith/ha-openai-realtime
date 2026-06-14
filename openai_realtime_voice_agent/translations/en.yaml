@@ -99,6 +99,13 @@ configuration:
       device flips to idle in the middle of long answers.
 
   # --- 🌐 Web search ---
+  interrupt_response:
+    name: "Conversation - Allow hands-free interruption"
+    description: >-
+      Lets a user interrupt the assistant while it is speaking. Keep this off
+      for devices without echo cancellation, because speaker audio may be
+      heard as a new question. Enable it for hardware with reliable AEC.
+
   enable_web_search:
     name: "🌐 Web search · Enable web search"
     description: >-

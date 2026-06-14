@@ -37,10 +37,8 @@ class AudioFrameRecorder(FrameProcessor):
             await self.push_frame(frame, direction)
             return
         
-        # Always pass all frames through to the next processor first
-        await self.push_frame(frame, direction)
-        
-        # Then record if this is the right audio frame type
+        # Record before forwarding, so downstream processors cannot delay or
+        # consume diagnostic audio before it reaches the recorder.
         if isinstance(frame, self.frame_type) and self.audio_recorder:
             try:
                 audio_bytes = frame.audio
@@ -49,6 +47,9 @@ class AudioFrameRecorder(FrameProcessor):
                     self.record_func(audio_bytes)
             except Exception as e:
                 logger.warning(f"⚠️ Error recording audio: {e}")
+        
+        # Always pass all frames through to the next processor
+        await self.push_frame(frame, direction)
 
 
 class AudioRecordingService:

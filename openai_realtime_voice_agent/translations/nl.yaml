@@ -101,6 +101,14 @@ configuration:
       als het apparaat midden in lange antwoorden al op rust springt.
 
   # --- 🌐 Websearch ---
+  interrupt_response:
+    name: "Gesprek - Handsfree onderbreken toestaan"
+    description: >-
+      Laat de gebruiker de assistent onderbreken terwijl die spreekt. Laat dit
+      uit voor apparaten zonder echo-onderdrukking, omdat speakergeluid dan als
+      een nieuwe vraag kan worden gehoord. Zet dit aan voor hardware met
+      betrouwbare AEC.
+
   enable_web_search:
     name: "🌐 Websearch · Zoeken op internet"
     description: >-

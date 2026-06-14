@@ -42,6 +42,7 @@ from pipecat.frames.frames import (
     TranscriptionFrame,
 )
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
+from app.tool_safety import set_last_user_text
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ class TranscriptLogger(FrameProcessor):
             if isinstance(frame, TranscriptionFrame):
                 text = (frame.text or "").strip()
                 if text:
+                    set_last_user_text(text)
                     logger.info(f"🗣️ user: {text}")
 
         await self.push_frame(frame, direction)

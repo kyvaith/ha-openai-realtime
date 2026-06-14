@@ -42,7 +42,7 @@ The **device firmware** lives in its own repository —
 ## Install
 
 1. In Home Assistant, open **Settings → Add-ons → Add-on store → ⋮ → Repositories**
-   and add `https://github.com/xandervanerven/ha-openai-realtime`.
+   and add `https://github.com/kyvaith/ha-openai-realtime`.
 2. Install **OpenAI Realtime 2 Voice Agent**. It ships with no prebuilt `image:`,
    so Home Assistant builds it locally on first install (a few minutes on a Pi).
 3. Configure the add-on and flash the companion firmware — see

@@ -32,7 +32,7 @@ drop-in for the stock HA voice pipeline.
 ## Quick start
 
 1. Add this repository to Home Assistant (Settings → Add-ons → Add-on Store → ⋮ →
-   **Repositories**): `https://github.com/xandervanerven/ha-openai-realtime`
+   **Repositories**): `https://github.com/kyvaith/ha-openai-realtime`
 2. Install **OpenAI Realtime 2 Voice Agent** and open its **Configuration** tab.
 3. Paste your **OpenAI API key**, install the HA **MCP Server** integration, expose
    a few entities to Assist, and **Start** the add-on.
