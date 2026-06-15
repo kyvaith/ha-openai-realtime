@@ -350,6 +350,15 @@ class Application:
         except Exception as e:
             logger.warning(f"⚠️ Failed to initialize Home Assistant MCP Client: {e}")
         
+        # Initialize audio recording service before the WebSocket handler so
+        # recorder processors are actually inserted into the pipeline.
+        self.audio_recording_service = AudioRecordingService(
+            enable_recording=enable_recording,
+            sample_rate=24000,
+            chunk_duration_seconds=30,
+            output_dir="recordings"
+        )
+
         # Initialize WebSocket handler
         self.websocket_handler = WebSocketHandler(
             host=websocket_host,
@@ -391,13 +400,6 @@ class Application:
         self.enable_web_search = enable_web_search
         self.web_search_model = web_search_model
 
-        # Initialize audio recording service (optional)
-        self.audio_recording_service = AudioRecordingService(
-            enable_recording=enable_recording,
-            sample_rate=24000,
-            chunk_duration_seconds=30,
-            output_dir="recordings"
-        )
         
         logger.info("✅ Application initialized - ready to accept WebSocket connections")
     

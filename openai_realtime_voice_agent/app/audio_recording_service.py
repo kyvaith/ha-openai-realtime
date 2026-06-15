@@ -1,6 +1,5 @@
 """Audio recording service."""
 import logging
-from datetime import datetime
 from typing import Optional
 
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
@@ -85,10 +84,10 @@ class AudioRecordingService:
     
     def _initialize_recording(self):
         """Initialize audio recording components."""
-        # Create audio recorder
+        # Create the recorder object and pipeline taps, but do not open WAV
+        # files until a real device session connects. Starting files here made
+        # empty 44-byte `input_session...wav` files on every add-on boot.
         self.audio_recorder = AudioRecorder(output_dir=self.output_dir)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.audio_recorder.start_recording(client_id=f"session_{timestamp}")
         
         # Create audio frame recorders for input and output
         self.input_recorder = AudioFrameRecorder(

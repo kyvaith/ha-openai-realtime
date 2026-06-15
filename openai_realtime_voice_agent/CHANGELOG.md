@@ -2,6 +2,13 @@
 
 All notable changes to this add-on. Newest first.
 
+## 0.5.2
+
+- Fixed debug WAV recording: the audio recorder is now initialized before the
+  WebSocket pipeline is built, so input/output audio taps are actually inserted.
+- Avoid creating empty boot-time `input_session...wav` and `output_session...wav`
+  files before a device connects.
+
 ## 0.5.1
 
 - Fork release for Atmosfera Echo Hub testing.
