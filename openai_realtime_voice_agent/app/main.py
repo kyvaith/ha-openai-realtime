@@ -13,6 +13,10 @@ from pipecat.transports.websocket.server import WebsocketServerTransport
 from app.mcp_service import HomeAssistantMCPService
 from app.disconnect_tool import get_disconnect_tool_definition, create_disconnect_tool_handler
 from app.web_search_tool import get_web_search_tool_definition, create_web_search_tool_handler
+from app.conversation_tools import (
+    get_request_follow_up_tool_definition,
+    create_request_follow_up_tool_handler,
+)
 from app.audio_recording_service import AudioRecordingService
 from app.session_manager import SessionManager
 from app.websocket_handler import WebSocketHandler
@@ -284,15 +288,14 @@ class Application:
         # Get recording setting (optional, defaults to false)
         enable_recording = os.environ.get("ENABLE_RECORDING", "false").lower() == "true"
         
-        # Post-reply follow-up window: how many seconds the device keeps the mic
-        # open after the assistant finishes so the user can answer back without
-        # re-saying the wake word. Sent to the device in the `hello` handshake as
-        # follow_up_ms; the device opens the mic (after its TTS tail drains) and
-        # shows the listening LED for that long. 0 disables (turn-based).
+        # Natural post-reply follow-up window: keep this off by default. The
+        # model can explicitly call request_follow_up when it ends an answer with
+        # a real question; the device then opens the mic after TTS drains. This
+        # prevents terminal phrases ("thanks", "stop") from reopening listening.
         try:
-            follow_up_listen_seconds = int(os.environ.get("FOLLOW_UP_LISTEN_SECONDS", "8"))
+            follow_up_listen_seconds = int(os.environ.get("FOLLOW_UP_LISTEN_SECONDS", "0"))
         except (TypeError, ValueError):
-            follow_up_listen_seconds = 8
+            follow_up_listen_seconds = 0
         follow_up_listen_seconds = max(0, min(60, follow_up_listen_seconds))
         follow_up_ms = follow_up_listen_seconds * 1000
         # Delay (ms) before the follow-up mic opens, bridging the device speaker's
@@ -470,7 +473,7 @@ class Application:
             # disconnect_client tool is opt-in (see enable_disconnect_tool): by
             # default we do NOT expose it, so the model can't hang up the device
             # mid-conversation.
-            all_tools = []
+            all_tools = [get_request_follow_up_tool_definition()]
             if self.enable_disconnect_tool:
                 all_tools.append(get_disconnect_tool_definition())
 
@@ -550,17 +553,13 @@ class Application:
                     silence_duration_ms=self.vad_silence_duration_ms,
                 )
 
-            # Optionally pin the input-transcription language to stop the model
-            # drifting between languages (e.g. "nl"). Empty -> auto-detect.
-            # transcription_model picks the STT used for the transcript text.
-            transcription = (
-                InputAudioTranscription(
-                    model=self.transcription_model,
-                    language=self.transcription_language,
-                )
-                if self.transcription_language
-                else None
-            )
+            # Always enable the side-channel transcript. The realtime model still
+            # understands audio natively; this text stream drives the device UI
+            # and the deterministic "user ended the conversation" detector.
+            transcription_kwargs = {"model": self.transcription_model}
+            if self.transcription_language:
+                transcription_kwargs["language"] = self.transcription_language
+            transcription = InputAudioTranscription(**transcription_kwargs)
 
             # Optional near/far-field input noise reduction (helps the VAD reject
             # background noise / residual speaker leak). None = off (default).
@@ -592,13 +591,13 @@ class Application:
                     f"🎚️ Turn detection: semantic_vad (eagerness={self.vad_eagerness}, "
                     f"create_response={self.semantic_vad_create_response}, "
                     f"interrupt_response={self.interrupt_response})"
-                    + (f", transcription={self.transcription_model} (lang={self.transcription_language})" if self.transcription_language else " (transcription off)")
+                    + (f", transcription={self.transcription_model} (lang={self.transcription_language or 'auto'})")
                 )
             else:
                 logger.info(
                     f"🎚️ Turn detection: server_vad (threshold={self.vad_threshold}, "
                     f"silence_duration_ms={self.vad_silence_duration_ms})"
-                    + (f", transcription={self.transcription_model} (lang={self.transcription_language})" if self.transcription_language else " (transcription off)")
+                    + (f", transcription={self.transcription_model} (lang={self.transcription_language or 'auto'})")
                 )
 
             logger.info(f"🔧 Creating session with {len(all_tools)} tools: {[tool.get('name', 'unknown') for tool in all_tools]}")
@@ -617,6 +616,12 @@ class Application:
                 disconnect_tool_handler = create_disconnect_tool_handler(self.websocket_transport)
                 self.openai_service.register_function("disconnect_client", disconnect_tool_handler)
                 logger.info("✅ Registered disconnect tool handler")
+
+            self.openai_service.register_function(
+                "request_follow_up",
+                create_request_follow_up_tool_handler(self.websocket_handler.request_follow_up_after_reply),
+            )
+            logger.info("Registered request_follow_up tool handler")
 
             # Register web search tool handler (only when the tool is exposed)
             if self.enable_web_search:
@@ -656,7 +661,10 @@ class Application:
         """Run the application."""
         await self.initialize()
         
-        # Create initial OpenAI service (will be replaced per connection)
+        # Create the OpenAI service that is bound to the single running Pipecat
+        # pipeline below. Do not replace it from the websocket connect callback:
+        # that would leave audio flowing through the old service while interrupts
+        # and session metadata point at a new orphaned one.
         await self._ensure_openai_service()
         
         # Build pipeline - based on pipecat-examples, one pipeline handles all connections
@@ -713,7 +721,12 @@ class Application:
         # Setup WebSocket event handlers
         async def on_client_connected(client_id: str):
             """Handle new client connection."""
-            await self._ensure_openai_service(client_id=client_id)
+            if self.session_manager and self.openai_service is not None:
+                self.session_manager.set_current_service(client_id, self.openai_service)
+                logger.info(
+                    "Client %s connected; using existing OpenAI service bound to pipeline",
+                    client_id,
+                )
             if self.audio_recording_service:
                 self.audio_recording_service.start_new_session(client_id)
         

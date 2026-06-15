@@ -1,5 +1,6 @@
 """WebSocket handler for managing WebSocket connections and pipelines."""
 import asyncio
+import base64
 import json
 import logging
 import time
@@ -289,6 +290,21 @@ class WebSocketHandler:
         # Connected device websockets, used to push va_client control/phase
         # messages as TEXT frames (the audio path uses the binary serializer).
         self._websockets: set = set()
+        self.phase_emitter: Optional[PhaseEmitter] = None
+
+    def request_follow_up_after_reply(self) -> None:
+        """Ask the active phase emitter to open a device follow-up window after the current reply."""
+        if self.phase_emitter is None:
+            logger.warning("request_follow_up ignored: phase emitter is not ready")
+            return
+        self.phase_emitter.request_follow_up()
+
+    def request_conversation_end_after_reply(self) -> None:
+        """Ask the device to show Thanks and close once the current reply drains."""
+        if self.phase_emitter is None:
+            logger.warning("conversation end ignored: phase emitter is not ready")
+            return
+        self.phase_emitter.request_conversation_end()
     
     def create_transport(self) -> WebsocketServerTransport:
         """
@@ -391,16 +407,24 @@ class WebSocketHandler:
         if context_aggregator:
             pipeline_components.extend([
                 context_aggregator.user(),
-                TranscriptLogger(capture="user"),
+                TranscriptLogger(
+                    capture="user",
+                    send_transcript=self.broadcast_transcript,
+                    on_terminal_user_text=self.request_conversation_end_after_reply,
+                ),
                 openai_service,
-                TranscriptLogger(capture="assistant"),
+                TranscriptLogger(capture="assistant", send_transcript=self.broadcast_transcript),
                 context_aggregator.assistant(),
             ])
         else:
             pipeline_components.extend([
-                TranscriptLogger(capture="user"),
+                TranscriptLogger(
+                    capture="user",
+                    send_transcript=self.broadcast_transcript,
+                    on_terminal_user_text=self.request_conversation_end_after_reply,
+                ),
                 openai_service,
-                TranscriptLogger(capture="assistant"),
+                TranscriptLogger(capture="assistant", send_transcript=self.broadcast_transcript),
             ])
 
         pipeline_components.append(output_activity_tracker)
@@ -409,7 +433,11 @@ class WebSocketHandler:
         # the device, derived from Pipecat speaking frames as they pass
         # downstream. Placed before transport.output() so it sees both the
         # user (UserStarted/Stopped) and bot (BotStarted/Stopped) frames.
-        pipeline_components.append(PhaseEmitter(send_phase=self.broadcast_phase))
+        self.phase_emitter = PhaseEmitter(
+            send_phase=self.broadcast_phase,
+            send_json=self.broadcast_json,
+        )
+        pipeline_components.append(self.phase_emitter)
 
         # Add output audio recorder to capture ONLY OutputAudioRawFrame
         output_recorder = self.audio_recording_service.get_output_recorder() if self.audio_recording_service else None
@@ -574,6 +602,18 @@ class WebSocketHandler:
         # think are connected (was debug).
         logger.info(f"➡️ broadcast phase '{value}' to {len(self._websockets)} device(s)")
         await self.broadcast_json({"type": "phase", "value": value})
+
+    async def broadcast_transcript(self, role: str, text: str) -> None:
+        """Send display transcript text to every connected device."""
+        clean = (text or "").strip()
+        if not clean:
+            return
+        payload = clean.encode("utf-8")
+        while len(payload) > 768 and len(clean) > 1:
+            clean = clean[: max(1, int(len(clean) * 0.75))]
+            payload = clean.encode("utf-8")
+        encoded = base64.b64encode(payload[:768]).decode("ascii")
+        await self.broadcast_json({"type": "transcript", "role": role, "text_b64": encoded})
     
     def setup_event_handlers(
         self,

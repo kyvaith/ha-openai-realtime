@@ -33,6 +33,7 @@ it never transforms or drops a frame. (Listed for removal under CLAUDE.md
 roadmap #5 once the system is stable.)
 """
 import logging
+from typing import Awaitable, Callable, Optional
 
 from pipecat.frames.frames import (
     Frame,
@@ -42,6 +43,7 @@ from pipecat.frames.frames import (
     TranscriptionFrame,
 )
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
+from app.conversation_tools import is_terminal_utterance
 from app.tool_safety import set_last_user_text
 
 logger = logging.getLogger(__name__)
@@ -55,10 +57,26 @@ class TranscriptLogger(FrameProcessor):
             the LLM), "user" (TranscriptionFrame, place BEFORE the LLM), or "both".
     """
 
-    def __init__(self, capture: str = "both", **kwargs):
+    def __init__(
+        self,
+        capture: str = "both",
+        send_transcript: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        on_terminal_user_text: Optional[Callable[[], None]] = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self._capture = capture
+        self._send_transcript = send_transcript
+        self._on_terminal_user_text = on_terminal_user_text
         self._assistant_buf: list[str] = []
+
+    async def _emit_transcript(self, role: str, text: str) -> None:
+        if self._send_transcript is None:
+            return
+        try:
+            await self._send_transcript(role, text)
+        except Exception as e:
+            logger.warning("Failed to emit %s transcript to device: %r", role, e)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -74,6 +92,7 @@ class TranscriptLogger(FrameProcessor):
                 text = "".join(self._assistant_buf).strip()
                 self._assistant_buf = []
                 if text:
+                    await self._emit_transcript("assistant", text)
                     logger.info(f"🤖 assistant: {text}")
 
         if self._capture in ("user", "both"):
@@ -81,6 +100,9 @@ class TranscriptLogger(FrameProcessor):
                 text = (frame.text or "").strip()
                 if text:
                     set_last_user_text(text)
+                    await self._emit_transcript("user", text)
+                    if self._on_terminal_user_text is not None and is_terminal_utterance(text):
+                        self._on_terminal_user_text()
                     logger.info(f"🗣️ user: {text}")
 
         await self.push_frame(frame, direction)

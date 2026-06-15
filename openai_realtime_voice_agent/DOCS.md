@@ -69,9 +69,9 @@ option has plain-language inline help.
 |---|---|---|
 | `openai_model` | `gpt-realtime-2` | newest speech-to-speech model |
 | `openai_voice` | `marin` | `marin`/`cedar` are the newest voices |
-| `transcription_language` | *(blank)* | set your ISO code (e.g. `nl`): locks the language + logs the user transcript |
+| `transcription_language` | *(blank)* | optional ISO code (e.g. `pl`); blank keeps auto-detect while transcripts still drive the device UI |
 | `instructions` | *(English default)* | the system prompt; swap the LANGUAGE line for your language |
-| `follow_up_listen_seconds` | `8` | mic stays open this long so you can answer back |
+| `follow_up_listen_seconds` | `0` | legacy always-open follow-up window; normal follow-up is request-driven |
 | `follow_up_open_delay_ms` | `200` | echo guard before the follow-up mic opens; 0 = snappiest |
 | `vad_eagerness` | `low` | waits longest before deciding you're done talking |
 | `playback_prebuffer_ms` | `150` | raise to ~250 if you hear crackle; 0 = play immediately |
@@ -104,9 +104,12 @@ Every option has a description on the **Configuration** tab. The ones worth know
 
 - **Model / voice / transcription model** are dropdowns with a **`custom`** entry +
   a `*_custom` text field if you want a value not in the list.
-- **`transcription_language`** turns the side-channel transcript on. With it set you
-  get `🗣️ user: …` lines in the add-on log (handy for debugging); it does **not**
-  change what the model understands — the main model hears your audio natively.
+- **`transcription_language`** only pins the transcript language. The side-channel
+  transcript is always enabled because it drives the device UI and deterministic
+  conversation-end detection; the main model still hears your audio natively.
+- **`follow_up_listen_seconds`** defaults to `0`. The assistant now opens the
+  device mic through a `request_follow_up` tool only when its answer ends with a
+  real question, so terminal phrases do not reopen listening.
 - **`follow_up_open_delay_ms` / `playback_prebuffer_ms`** default to `200` / `150`
   — a small echo guard and jitter cushion. Set them to `0` for the snappiest
   feel; raise them if the device "answers nobody" after a reply (open delay) or

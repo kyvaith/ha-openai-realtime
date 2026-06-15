@@ -138,6 +138,21 @@ def augment_tool_description(tool_name: str, description: str) -> str:
 
 
 def augment_system_instructions(instructions: str) -> str:
+    conversation_contract = (
+        "\n\nREALTIME CONVERSATION CONTRACT: Keep the conversation open and "
+        "natural. For every substantive non-terminal answer, end with one short "
+        "follow-up question in the user's language, for example in Polish: "
+        "'Czy moge cos jeszcze sprawdzic?'. If the latest user utterance clearly "
+        "ends the conversation, for example 'ok dziekuje', 'dzieki', 'koniec "
+        "rozmowy', 'stop', 'wystarczy', 'do uslyszenia', 'goodbye', or 'that's "
+        "all', answer briefly and do not ask another question. Do not say filler "
+        "like 'sekunda' or 'chwila' before tool calls. If a tool, web search, or "
+        "Home Assistant MCP call is needed, call it silently and answer only when "
+        "you have the result. If your answer ends with a real follow-up question "
+        "and the user did not end the conversation, call the request_follow_up "
+        "tool once so the device opens the microphone after your spoken answer. "
+        "Never call request_follow_up after terminal phrases."
+    )
     safety = (
         "\n\nSMART HOME TOOL SAFETY: Home Assistant tools are only for explicit "
         "smart-home control or state questions. Do not call Home Assistant "
@@ -147,7 +162,7 @@ def augment_system_instructions(instructions: str) -> str:
         "target is ambiguous, ask a short clarifying question before calling a "
         "tool."
     )
-    return (instructions or "").rstrip() + safety
+    return (instructions or "").rstrip() + conversation_contract + safety
 
 
 def guarded_tool_handler(

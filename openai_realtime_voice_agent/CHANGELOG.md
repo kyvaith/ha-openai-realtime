@@ -2,6 +2,25 @@
 
 All notable changes to this add-on. Newest first.
 
+## 0.5.6
+
+- Stream transcript messages to ESPHome `va_client` devices for assistant UI text.
+- Enable side-channel transcription even when the language is auto-detected.
+- Detect terminal user utterances and close the device conversation with a short
+  `Thanks` phase instead of reopening the microphone.
+- Delay the generic Thinking phase so short answers go from Listening directly
+  to Answering unless a tool call or slow response really needs Thinking.
+
+## 0.5.5
+
+- Make conversation state deterministic for ESPHome `va_client` devices.
+- Add a `request_follow_up` tool so the device only reopens the microphone after
+  answers that actually ask a follow-up question.
+- Keep the OpenAI Realtime service bound to the running Pipecat pipeline instead
+  of replacing it on each device connection.
+- Stabilize phase emission around segmented replies and tool calls to avoid
+  `replying -> idle -> replying` flapping.
+
 ## 0.5.4
 
 - Fixed debug WAV files while a session is still active. The recorder now

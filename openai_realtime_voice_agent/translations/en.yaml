@@ -72,10 +72,10 @@ configuration:
   follow_up_listen_seconds:
     name: "💬 Conversation · Follow-up listening (seconds)"
     description: >-
-      After an answer the device keeps listening this long, so you can simply
-      keep talking — no wake word needed. The LED ring shows the listening
-      colour while it waits. 8 feels natural; 0 turns it off (wake word
-      before every question).
+      Legacy fallback window after every answer. Keep this at 0 for the
+      deterministic flow: the assistant now calls request_follow_up only when it
+      actually asks a follow-up question. Raise this only if you want the old
+      "always listen after every reply" behaviour.
   follow_up_open_delay_ms:
     name: "💬 Conversation · Follow-up mic delay (ms)"
     description: >-
