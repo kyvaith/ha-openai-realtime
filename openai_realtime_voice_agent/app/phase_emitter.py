@@ -24,6 +24,9 @@ from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     Frame,
+    InterruptionFrame,
+    InterruptionTaskFrame,
+    StartInterruptionFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
@@ -67,6 +70,7 @@ class PhaseEmitter(FrameProcessor):
         self._awaiting_post_tool_reply = False
         self._follow_up_requested = False
         self._conversation_end_requested = False
+        self._barge_in_active = False
 
     def request_follow_up(self) -> None:
         """Ask the device to open its follow-up mic window after this reply drains."""
@@ -106,6 +110,8 @@ class PhaseEmitter(FrameProcessor):
         try:
             await asyncio.sleep(self._idle_debounce_s)
         except asyncio.CancelledError:
+            return
+        if self._barge_in_active or self._current == "listening":
             return
         if self._tool_active or self._awaiting_post_tool_reply:
             self._idle_task = asyncio.create_task(self._emit_idle_after_debounce())
@@ -147,8 +153,10 @@ class PhaseEmitter(FrameProcessor):
             self._awaiting_post_tool_reply = False
             self._follow_up_requested = False
             self._conversation_end_requested = False
+            self._barge_in_active = True
             await self._emit("listening")
         elif isinstance(frame, UserStoppedSpeakingFrame):
+            self._barge_in_active = False
             self._cancel_pending_idle()
             self._cancel_pending_thinking()
             self._thinking_task = asyncio.create_task(self._emit_thinking_after_delay())
@@ -157,10 +165,23 @@ class PhaseEmitter(FrameProcessor):
             self._cancel_pending_thinking()
             self._tool_active = False
             self._awaiting_post_tool_reply = False
+            self._barge_in_active = False
             await self._emit("replying")
         elif isinstance(frame, BotStoppedSpeakingFrame):
             self._cancel_pending_idle()
-            self._idle_task = asyncio.create_task(self._emit_idle_after_debounce())
+            if self._barge_in_active or self._current == "listening":
+                logger.info("bot stopped after interruption; keeping phase=listening")
+            else:
+                self._idle_task = asyncio.create_task(self._emit_idle_after_debounce())
+        elif isinstance(frame, (InterruptionFrame, InterruptionTaskFrame, StartInterruptionFrame)):
+            self._cancel_pending_idle()
+            self._cancel_pending_thinking()
+            self._tool_active = False
+            self._awaiting_post_tool_reply = False
+            self._follow_up_requested = False
+            self._conversation_end_requested = False
+            self._barge_in_active = True
+            await self._emit("listening")
         else:
             frame_name = type(frame).__name__
             if frame_name in ("FunctionCallsStartedFrame", "FunctionCallInProgressFrame"):
