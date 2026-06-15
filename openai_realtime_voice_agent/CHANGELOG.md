@@ -2,6 +2,13 @@
 
 All notable changes to this add-on. Newest first.
 
+## 0.5.3
+
+- Fixed debug WAV recording session startup after the 0.5.2 refactor. The
+  recorder now imports the timestamp helper used when opening per-client files,
+  so `recordings/` receives real `input_*.wav` and `output_*.wav` files instead
+  of failing in `on_client_connected`.
+
 ## 0.5.2
 
 - Fixed debug WAV recording: the audio recorder is now initialized before the
