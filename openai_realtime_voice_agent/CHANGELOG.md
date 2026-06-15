@@ -2,6 +2,13 @@
 
 All notable changes to this add-on. Newest first.
 
+## 0.5.4
+
+- Fixed debug WAV files while a session is still active. The recorder now
+  updates RIFF/data sizes periodically and avoids flushing on every audio
+  frame, so recordings can be inspected during live debugging without adding
+  avoidable audio-path stalls.
+
 ## 0.5.3
 
 - Fixed debug WAV recording session startup after the 0.5.2 refactor. The
