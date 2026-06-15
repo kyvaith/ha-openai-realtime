@@ -1,110 +1,98 @@
 """Simple serializer for raw binary PCM audio frames."""
+
 import json
 import logging
 import os
-from pipecat.frames.frames import InputAudioRawFrame, OutputAudioRawFrame, Frame
+
+from pipecat.frames.frames import Frame, InputAudioRawFrame, OutputAudioRawFrame
 from pipecat.serializers.base_serializer import FrameSerializer, FrameSerializerType
 
 logger = logging.getLogger(__name__)
 
 
 class RawAudioSerializer(FrameSerializer):
-    """Serializer that treats all binary messages as raw PCM audio.
+    """Serializer that treats binary messages as raw PCM audio.
 
-    Text frames (JSON control messages such as the va_client phase protocol)
-    are NOT handled here — they are sent/received directly on the websocket by
-    the WebSocketHandler so they go out as TEXT frames, not binary.
+    Text frames are small JSON control messages from the device. They are
+    handled here because the Pipecat websocket transport routes all incoming
+    messages through the serializer.
     """
 
     def __init__(self, input_sample_rate: int | None = None):
-        # The Home Assistant Voice PE firmware (va_client) streams 16 kHz PCM16
-        # mono from the XMOS mic. We tag incoming frames with the device's true
-        # rate. NOTE: pipecat 0.0.97's input transport does NOT resample — the
-        # InputResampler processor in websocket_handler.py upsamples 16k->24k
-        # before the audio reaches OpenAI (which requires 24 kHz pcm16 input).
+        # The device streams 16 kHz PCM16 mono. Pipecat/OpenAI Realtime runs at
+        # 24 kHz, so websocket_handler.py adds an input resampler after this
+        # serializer.
         if input_sample_rate is None:
             input_sample_rate = int(os.environ.get("DEVICE_INPUT_SAMPLE_RATE", "16000"))
         self._input_sample_rate = input_sample_rate
-        # Async callback invoked when the device sends {"type":"interrupt"} (the
-        # "stop" wake word). Set by WebSocketHandler.build_pipeline once it has
-        # the OpenAI service. We deliberately do NOT emit a pipecat
-        # InterruptionFrame for this: pipecat's OWN VAD already emits
-        # InterruptionFrame (StartInterruptionFrame) on every user-start-speaking,
-        # so reacting to that class would cancel the response on ANY speech.
         self._on_interrupt = None
+        self._on_flush = None
+        self._on_wake = None
 
     def set_interrupt_handler(self, handler):
-        """Register the async no-arg callback fired on a device 'interrupt'."""
+        """Register the async callback fired on device 'interrupt'."""
         self._on_interrupt = handler
+
+    def set_flush_handler(self, handler):
+        """Register the async callback fired on device 'flush'."""
+        self._on_flush = handler
+
+    def set_wake_handler(self, handler):
+        """Register the async callback fired on device 'wake'."""
+        self._on_wake = handler
 
     @property
     def type(self) -> FrameSerializerType:
-        """Get the serialization type - binary for raw audio."""
+        """Get the serialization type."""
         return FrameSerializerType.BINARY
 
-    async def deserialize(self, message: bytes) -> InputAudioRawFrame:
-        """Deserialize binary message as raw PCM audio frame.
-
-        Args:
-            message: Binary PCM audio data (16-bit, mono, device sample rate)
-
-        Returns:
-            InputAudioRawFrame with the audio data, or None if invalid
-        """
-        # Device CONTROL frames arrive as TEXT (str). pipecat 0.0.97's websocket
-        # transport has NO on_message event and routes EVERY incoming frame
-        # through this serializer, so the device's {"type":"interrupt"} (sent
-        # when the user says the "stop" wake word) would be silently dropped and
-        # the assistant's reply would never stop. Handle it via the registered
-        # interrupt callback (which sends an explicit OpenAI response.cancel) and
-        # inject NO frame into the pipeline — emitting a pipecat InterruptionFrame
-        # here would be indistinguishable from the VAD's own per-utterance
-        # interruptions and would cancel the reply on any speech.
+    async def deserialize(self, message: bytes) -> InputAudioRawFrame | None:
+        """Deserialize a websocket message into a Pipecat input frame."""
         if isinstance(message, str):
             try:
                 data = json.loads(message)
             except (ValueError, TypeError):
                 return None
-            if isinstance(data, dict) and data.get("type") == "interrupt":
-                logger.info("🛑 device interrupt received")
-                if self._on_interrupt is not None:
-                    try:
-                        await self._on_interrupt()
-                    except Exception as e:
-                        logger.warning(f"⚠️ device interrupt handler failed: {e!r}")
-            # interrupt / ping / start / other control frames: nothing to inject.
+
+            if isinstance(data, dict):
+                message_type = data.get("type")
+                if message_type == "interrupt":
+                    logger.info("device interrupt received")
+                    await self._run_control_handler(self._on_interrupt, "interrupt")
+                elif message_type == "flush":
+                    logger.info("device flush received")
+                    await self._run_control_handler(self._on_flush, "flush")
+                elif message_type == "wake":
+                    logger.info("device wake received")
+                    await self._run_control_handler(self._on_wake, "wake")
             return None
 
         if not isinstance(message, bytes):
-            # Skip anything that isn't bytes or a known text control frame.
             return None
 
-        # Validate audio format: 16-bit = 2 bytes per sample
         if len(message) % 2 != 0:
-            logger.warning(f"⚠️ Received audio with odd byte count: {len(message)} bytes, skipping")
+            logger.warning("Received audio with odd byte count: %s bytes, skipping", len(message))
             return None
 
-        # Create InputAudioRawFrame at the device's mic rate; the InputResampler
-        # processor (right after transport.input()) upsamples it to 24 kHz.
-        frame = InputAudioRawFrame(
+        return InputAudioRawFrame(
             audio=message,
             sample_rate=self._input_sample_rate,
-            num_channels=1
+            num_channels=1,
         )
 
-        return frame
-    
+    async def _run_control_handler(self, handler, name: str) -> None:
+        if handler is None:
+            return
+        try:
+            await handler()
+        except Exception as e:
+            logger.warning("device %s handler failed: %r", name, e)
+
     async def serialize(self, frame: Frame) -> bytes:
-        """Serialize frame to binary message.
-        
-        For output audio frames, we just return the raw audio bytes.
-        Other frames are not serialized (return empty bytes).
-        """
+        """Serialize output audio frames to raw PCM bytes."""
         if isinstance(frame, OutputAudioRawFrame):
             audio_bytes = frame.audio
-            logger.debug(f"📤 Serializing OutputAudioRawFrame: {len(audio_bytes)} bytes")
+            logger.debug("Serializing OutputAudioRawFrame: %s bytes", len(audio_bytes))
             return audio_bytes
-        # For other frame types, return empty bytes (not serialized)
-        logger.debug(f"📤 Serializing non-audio frame: {type(frame).__name__}, returning empty bytes")
+        logger.debug("Serializing non-audio frame: %s, returning empty bytes", type(frame).__name__)
         return b""
-

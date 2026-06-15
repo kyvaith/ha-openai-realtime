@@ -2,6 +2,13 @@
 
 All notable changes to this add-on. Newest first.
 
+## 0.5.7
+
+- Handle ESPHome `va_client` `wake` and `flush` control frames separately from
+  real user interrupts.
+- Keep `flush`/`wake` as input-buffer cleanup only; reserve response cancellation
+  for explicit device interrupts.
+
 ## 0.5.6
 
 - Stream transcript messages to ESPHome `va_client` devices for assistant UI text.

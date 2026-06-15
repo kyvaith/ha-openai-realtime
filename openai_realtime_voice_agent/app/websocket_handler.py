@@ -530,6 +530,19 @@ class WebSocketHandler:
             except Exception as e:
                 logger.info(f"🛑 device interrupt → response.cancel no-op ({e!r})")
 
+        async def _clear_device_input(reason: str):
+            try:
+                await openai_service.send_client_event(openai_rt_events.InputAudioBufferClearEvent())
+                logger.info("device %s -> input_audio_buffer.clear sent", reason)
+            except Exception as e:
+                logger.info("device %s -> input_audio_buffer.clear no-op (%r)", reason, e)
+
+        async def _on_device_flush():
+            await _clear_device_input("flush")
+
+        async def _on_device_wake():
+            await _clear_device_input("wake")
+
         @openai_service.event_handler("on_conversation_item_created")
         async def _kill_racing_response(service, item_id, item):
             # Pipecat fires this for every conversation.item.added; only an
@@ -550,6 +563,8 @@ class WebSocketHandler:
 
         if self._serializer is not None:
             self._serializer.set_interrupt_handler(_on_device_interrupt)
+            self._serializer.set_flush_handler(_on_device_flush)
+            self._serializer.set_wake_handler(_on_device_wake)
 
         return pipeline, runner, task
     
