@@ -2,6 +2,11 @@
 
 All notable changes to this add-on. Newest first.
 
+## 0.5.9
+
+- Remove the temporary local smart-home action guard. Home Assistant MCP action
+  tools are now allowed to execute directly again once the model chooses them.
+
 ## 0.5.7
 
 - Handle ESPHome `va_client` `wake` and `flush` control frames separately from
