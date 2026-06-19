@@ -2,6 +2,16 @@
 
 All notable changes to this add-on. Newest first.
 
+## 0.5.10
+
+- Stop exposing `request_follow_up` as an LLM tool. Follow-up listening is now
+  inferred after the assistant transcript is complete, so the realtime model can
+  no longer call the follow-up control before speaking.
+- Relax the conversation contract so casual questions are answered directly
+  instead of being turned into smart-home offers.
+- Add wake-to-flush audio frame counters to make it obvious whether a wake turn
+  delivered microphone audio to the backend.
+
 ## 0.5.9
 
 - Remove the temporary local smart-home action guard. Home Assistant MCP action

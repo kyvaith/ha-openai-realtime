@@ -413,7 +413,11 @@ class WebSocketHandler:
                     on_terminal_user_text=self.request_conversation_end_after_reply,
                 ),
                 openai_service,
-                TranscriptLogger(capture="assistant", send_transcript=self.broadcast_transcript),
+                TranscriptLogger(
+                    capture="assistant",
+                    send_transcript=self.broadcast_transcript,
+                    on_follow_up_assistant_text=self.request_follow_up_after_reply,
+                ),
                 context_aggregator.assistant(),
             ])
         else:
@@ -424,7 +428,11 @@ class WebSocketHandler:
                     on_terminal_user_text=self.request_conversation_end_after_reply,
                 ),
                 openai_service,
-                TranscriptLogger(capture="assistant", send_transcript=self.broadcast_transcript),
+                TranscriptLogger(
+                    capture="assistant",
+                    send_transcript=self.broadcast_transcript,
+                    on_follow_up_assistant_text=self.request_follow_up_after_reply,
+                ),
             ])
 
         pipeline_components.append(output_activity_tracker)

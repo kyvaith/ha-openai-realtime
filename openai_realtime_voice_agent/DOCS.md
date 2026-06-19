@@ -108,8 +108,9 @@ Every option has a description on the **Configuration** tab. The ones worth know
   transcript is always enabled because it drives the device UI and deterministic
   conversation-end detection; the main model still hears your audio natively.
 - **`follow_up_listen_seconds`** defaults to `0`. The assistant now opens the
-  device mic through a `request_follow_up` tool only when its answer ends with a
-  real question, so terminal phrases do not reopen listening.
+  device mic only after the backend sees a completed assistant answer that ends
+  with a real question, so terminal phrases do not reopen listening and the LLM
+  cannot request follow-up before speaking.
 - **`follow_up_open_delay_ms` / `playback_prebuffer_ms`** default to `200` / `150`
   — a small echo guard and jitter cushion. Set them to `0` for the snappiest
   feel; raise them if the device "answers nobody" after a reply (open delay) or

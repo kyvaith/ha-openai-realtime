@@ -13,10 +13,6 @@ from pipecat.transports.websocket.server import WebsocketServerTransport
 from app.mcp_service import HomeAssistantMCPService
 from app.disconnect_tool import get_disconnect_tool_definition, create_disconnect_tool_handler
 from app.web_search_tool import get_web_search_tool_definition, create_web_search_tool_handler
-from app.conversation_tools import (
-    get_request_follow_up_tool_definition,
-    create_request_follow_up_tool_handler,
-)
 from app.audio_recording_service import AudioRecordingService
 from app.session_manager import SessionManager
 from app.websocket_handler import WebSocketHandler
@@ -288,10 +284,10 @@ class Application:
         # Get recording setting (optional, defaults to false)
         enable_recording = os.environ.get("ENABLE_RECORDING", "false").lower() == "true"
         
-        # Natural post-reply follow-up window: keep this off by default. The
-        # model can explicitly call request_follow_up when it ends an answer with
-        # a real question; the device then opens the mic after TTS drains. This
-        # prevents terminal phrases ("thanks", "stop") from reopening listening.
+        # Legacy post-reply follow-up window: keep this off by default. Normal
+        # follow-up is inferred deterministically from the assistant transcript
+        # after the reply has been produced, not by an LLM tool call. That avoids
+        # the Realtime model calling a follow-up tool before it speaks.
         try:
             follow_up_listen_seconds = int(os.environ.get("FOLLOW_UP_LISTEN_SECONDS", "0"))
         except (TypeError, ValueError):
@@ -473,7 +469,7 @@ class Application:
             # disconnect_client tool is opt-in (see enable_disconnect_tool): by
             # default we do NOT expose it, so the model can't hang up the device
             # mid-conversation.
-            all_tools = [get_request_follow_up_tool_definition()]
+            all_tools = []
             if self.enable_disconnect_tool:
                 all_tools.append(get_disconnect_tool_definition())
 
@@ -616,12 +612,6 @@ class Application:
                 disconnect_tool_handler = create_disconnect_tool_handler(self.websocket_transport)
                 self.openai_service.register_function("disconnect_client", disconnect_tool_handler)
                 logger.info("✅ Registered disconnect tool handler")
-
-            self.openai_service.register_function(
-                "request_follow_up",
-                create_request_follow_up_tool_handler(self.websocket_handler.request_follow_up_after_reply),
-            )
-            logger.info("Registered request_follow_up tool handler")
 
             # Register web search tool handler (only when the tool is exposed)
             if self.enable_web_search:

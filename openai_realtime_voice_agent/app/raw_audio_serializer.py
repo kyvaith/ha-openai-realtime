@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import time
 
 from pipecat.frames.frames import Frame, InputAudioRawFrame, OutputAudioRawFrame
 from pipecat.serializers.base_serializer import FrameSerializer, FrameSerializerType
@@ -28,6 +29,11 @@ class RawAudioSerializer(FrameSerializer):
         self._on_interrupt = None
         self._on_flush = None
         self._on_wake = None
+        self._audio_window_control = "connect"
+        self._audio_window_started = time.monotonic()
+        self._audio_window_frames = 0
+        self._audio_window_bytes = 0
+        self._audio_first_frame_logged = False
 
     def set_interrupt_handler(self, handler):
         """Register the async callback fired on device 'interrupt'."""
@@ -58,12 +64,15 @@ class RawAudioSerializer(FrameSerializer):
                 message_type = data.get("type")
                 if message_type == "interrupt":
                     logger.info("device interrupt received")
+                    self._log_audio_window("interrupt")
                     await self._run_control_handler(self._on_interrupt, "interrupt")
                 elif message_type == "flush":
-                    logger.info("device flush received")
+                    self._log_audio_window("flush")
                     await self._run_control_handler(self._on_flush, "flush")
+                    self._reset_audio_window("flush")
                 elif message_type == "wake":
                     logger.info("device wake received")
+                    self._reset_audio_window("wake")
                     await self._run_control_handler(self._on_wake, "wake")
             return None
 
@@ -74,10 +83,47 @@ class RawAudioSerializer(FrameSerializer):
             logger.warning("Received audio with odd byte count: %s bytes, skipping", len(message))
             return None
 
+        self._audio_window_frames += 1
+        self._audio_window_bytes += len(message)
+        if not self._audio_first_frame_logged:
+            self._audio_first_frame_logged = True
+            logger.info(
+                "device audio after %s: first frame=%s bytes rate=%sHz",
+                self._audio_window_control,
+                len(message),
+                self._input_sample_rate,
+            )
+
         return InputAudioRawFrame(
             audio=message,
             sample_rate=self._input_sample_rate,
             num_channels=1,
+        )
+
+    def _reset_audio_window(self, control: str) -> None:
+        self._audio_window_control = control
+        self._audio_window_started = time.monotonic()
+        self._audio_window_frames = 0
+        self._audio_window_bytes = 0
+        self._audio_first_frame_logged = False
+
+    def _log_audio_window(self, control: str) -> None:
+        elapsed_ms = int((time.monotonic() - self._audio_window_started) * 1000)
+        if self._audio_window_frames == 0:
+            logger.warning(
+                "device %s received after %s: no audio frames in %sms",
+                control,
+                self._audio_window_control,
+                elapsed_ms,
+            )
+            return
+        logger.info(
+            "device %s received after %s: %s audio frames, %s bytes in %sms",
+            control,
+            self._audio_window_control,
+            self._audio_window_frames,
+            self._audio_window_bytes,
+            elapsed_ms,
         )
 
     async def _run_control_handler(self, handler, name: str) -> None:

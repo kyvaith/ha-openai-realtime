@@ -50,6 +50,16 @@ def is_terminal_utterance(text: str) -> bool:
     )
 
 
+def assistant_requests_follow_up(text: str) -> bool:
+    """Return true when the assistant's final spoken text invites a reply."""
+    cleaned = (text or "").strip().rstrip("\"'”’)]}")
+    if not cleaned:
+        return False
+    if is_terminal_utterance(cleaned):
+        return False
+    return cleaned.endswith("?")
+
+
 def get_request_follow_up_tool_definition() -> Dict[str, Any]:
     """Return the OpenAI Realtime tool definition for a device follow-up window."""
     return {
