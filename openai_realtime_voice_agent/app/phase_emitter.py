@@ -69,8 +69,10 @@ class PhaseEmitter(FrameProcessor):
         self._tool_active = False
         self._awaiting_post_tool_reply = False
         self._follow_up_requested = False
+        self._follow_up_emitted = False
         self._conversation_end_requested = False
         self._barge_in_active = False
+        self._bot_speaking = False
 
     def request_follow_up(self) -> None:
         """Ask the device to open its follow-up mic window after this reply drains."""
@@ -78,11 +80,24 @@ class PhaseEmitter(FrameProcessor):
             logger.info("request_follow_up ignored because conversation end is pending")
             return
         self._follow_up_requested = True
+        logger.info("request_follow_up requested from assistant transcript")
+        if not self._follow_up_emitted:
+            self._follow_up_emitted = True
+            if self._send_json is not None:
+                asyncio.create_task(self._send_request_follow_up())
 
     def request_conversation_end(self) -> None:
         """Ask the device to show a terminal thanks state after this reply drains."""
         self._conversation_end_requested = True
         self._follow_up_requested = False
+        self._follow_up_emitted = False
+
+    async def _send_request_follow_up(self) -> None:
+        try:
+            await self._send_json({"type": "request_follow_up"})
+            logger.info("request_follow_up sent to device")
+        except Exception as e:
+            logger.warning("Failed to emit request_follow_up: %r", e)
 
     async def _emit(self, value: str) -> None:
         if value == self._current:
@@ -119,6 +134,7 @@ class PhaseEmitter(FrameProcessor):
         if self._conversation_end_requested:
             self._conversation_end_requested = False
             self._follow_up_requested = False
+            self._follow_up_emitted = False
             if self._send_json is not None:
                 try:
                     await self._send_json({"type": "thanks"})
@@ -127,17 +143,18 @@ class PhaseEmitter(FrameProcessor):
                     logger.warning("Failed to emit thanks: %r", e)
         elif self._follow_up_requested:
             self._follow_up_requested = False
-            if self._send_json is not None:
-                try:
-                    await self._send_json({"type": "request_follow_up"})
-                except Exception as e:
-                    logger.warning("Failed to emit request_follow_up: %r", e)
+            if not self._follow_up_emitted:
+                self._follow_up_emitted = True
+                await self._send_request_follow_up()
+            self._follow_up_emitted = False
         await self._emit("idle")
 
     async def _emit_thinking_after_delay(self) -> None:
         try:
             await asyncio.sleep(self._thinking_delay_s)
         except asyncio.CancelledError:
+            return
+        if self._bot_speaking or self._current == "replying":
             return
         if self._tool_active or self._awaiting_post_tool_reply:
             return
@@ -152,11 +169,15 @@ class PhaseEmitter(FrameProcessor):
             self._tool_active = False
             self._awaiting_post_tool_reply = False
             self._follow_up_requested = False
+            self._follow_up_emitted = False
             self._conversation_end_requested = False
             self._barge_in_active = True
             await self._emit("listening")
         elif isinstance(frame, UserStoppedSpeakingFrame):
             self._barge_in_active = False
+            if self._bot_speaking or self._current == "replying":
+                await self.push_frame(frame, direction)
+                return
             self._cancel_pending_idle()
             self._cancel_pending_thinking()
             self._thinking_task = asyncio.create_task(self._emit_thinking_after_delay())
@@ -166,8 +187,10 @@ class PhaseEmitter(FrameProcessor):
             self._tool_active = False
             self._awaiting_post_tool_reply = False
             self._barge_in_active = False
+            self._bot_speaking = True
             await self._emit("replying")
         elif isinstance(frame, BotStoppedSpeakingFrame):
+            self._bot_speaking = False
             self._cancel_pending_idle()
             if self._barge_in_active or self._current == "listening":
                 logger.info("bot stopped after interruption; keeping phase=listening")
@@ -179,6 +202,7 @@ class PhaseEmitter(FrameProcessor):
             self._tool_active = False
             self._awaiting_post_tool_reply = False
             self._follow_up_requested = False
+            self._follow_up_emitted = False
             self._conversation_end_requested = False
             self._barge_in_active = True
             await self._emit("listening")
@@ -200,5 +224,6 @@ class PhaseEmitter(FrameProcessor):
                 self._tool_active = False
                 self._awaiting_post_tool_reply = False
                 self._follow_up_requested = False
+                self._follow_up_emitted = False
 
         await self.push_frame(frame, direction)

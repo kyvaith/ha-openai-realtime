@@ -2,6 +2,16 @@
 
 All notable changes to this add-on. Newest first.
 
+## 0.5.11
+
+- Latch device follow-up immediately when the completed assistant transcript
+  ends with a question, so the firmware can open the answer window reliably when
+  the reply drains.
+- Prevent a delayed user-stopped frame from switching the device to `thinking`
+  while the assistant is already speaking.
+- Strengthen the system contract so general questions are answered normally and
+  Home Assistant tools are used only for explicit home/device requests.
+
 ## 0.5.10
 
 - Stop exposing `request_follow_up` as an LLM tool. Follow-up listening is now
